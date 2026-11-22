@@ -107,3 +107,22 @@ if __name__ == "__main__":
 
     print("\nSCRAPER SUCCESS")
     print(data)
+
+
+def extract_last_update(soup):
+
+    text = soup.get_text(" ", strip=True)
+
+    import re
+
+    match = re.search(
+        r"Last Update\s*-\s*Market Status\s*:\s*"
+        r"(.*?)\s*(?:Index\s+Last|Market Summary)",
+        text,
+        re.IGNORECASE
+    )
+
+    if match:
+        return match.group(1).strip()
+
+    return None
