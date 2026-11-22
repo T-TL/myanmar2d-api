@@ -26,6 +26,8 @@ def fetch_set_data():
         timeout=30
     )
 
+    print("HTTP STATUS:", response.status_code)
+
     response.raise_for_status()
 
     soup = BeautifulSoup(
@@ -33,12 +35,17 @@ def fetch_set_data():
         "html.parser"
     )
 
-    for table in soup.find_all("table"):
+    tables = soup.find_all("table")
+
+    print("TABLE COUNT:", len(tables))
+
+    for table_number, table in enumerate(tables):
 
         rows = table.find_all("tr")
 
-        for row in rows:
+        for row_number, row in enumerate(rows):
 
+            # Use the same method as the successful parser
             cells = row.find_all(["th", "td"])
 
             values = [
@@ -46,33 +53,48 @@ def fetch_set_data():
                 for cell in cells
             ]
 
-            if len(values) < 8:
+            if not values:
                 continue
 
-            if values[0].strip().upper() != "SET":
-                continue
+            normalized = [
+                value.strip().replace("\xa0", " ")
+                for value in values
+            ]
 
-            try:
+            if (
+                normalized[0].replace(" ", "").upper()
+                == "SET"
+            ):
+
+                print("SET ROW FOUND")
+                print("TABLE:", table_number)
+                print("ROW:", row_number)
+                print("VALUES:", normalized)
+
+                if len(normalized) < 8:
+                    raise ValueError(
+                        "SET row has fewer than 8 columns"
+                    )
+
                 set_index = float(
-                    values[1].replace(",", "")
+                    normalized[1].replace(",", "")
                 )
 
                 market_value = float(
-                    values[7].replace(",", "")
+                    normalized[7].replace(",", "")
                 )
 
-            except ValueError:
-                continue
+                return {
+                    "set_index": set_index,
+                    "market_value": market_value,
+                    "source": "SET_OFFICIAL",
+                    "fetched_at": datetime.now(
+                        timezone.utc
+                    ).isoformat(),
+                    "is_live": False,
+                }
 
-            return {
-                "set_index": set_index,
-                "market_value": market_value,
-                "source": "SET_OFFICIAL",
-                "fetched_at": datetime.now(
-                    timezone.utc
-                ).isoformat(),
-                "is_live": False,
-            }
+    print("No SET row found.")
 
     raise ValueError(
         "SET market data row not found"
@@ -81,12 +103,7 @@ def fetch_set_data():
 
 if __name__ == "__main__":
 
-    try:
-        data = fetch_set_data()
+    data = fetch_set_data()
 
-        print("SCRAPER SUCCESS")
-        print(data)
-
-    except Exception as error:
-        print("SCRAPER ERROR:", str(error))
-        raise
+    print("\nSCRAPER SUCCESS")
+    print(data)
