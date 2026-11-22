@@ -1,5 +1,6 @@
 
 import requests
+import re
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 
@@ -16,6 +17,23 @@ HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml",
 }
+
+
+def extract_last_update(soup):
+
+    text = soup.get_text(" ", strip=True)
+
+    match = re.search(
+        r"Last Update\s*-\s*Market Status\s*:\s*"
+        r"(.*?)\s*(?:Index\s+Last|Market Summary)",
+        text,
+        re.IGNORECASE
+    )
+
+    if match:
+        return match.group(1).strip()
+
+    return None
 
 
 def fetch_set_data():
@@ -39,13 +57,16 @@ def fetch_set_data():
 
     print("TABLE COUNT:", len(tables))
 
+    last_update = extract_last_update(soup)
+
+    print("SOURCE LAST UPDATE:", last_update)
+
     for table_number, table in enumerate(tables):
 
         rows = table.find_all("tr")
 
         for row_number, row in enumerate(rows):
 
-            # Use the same method as the successful parser
             cells = row.find_all(["th", "td"])
 
             values = [
@@ -61,20 +82,10 @@ def fetch_set_data():
                 for value in values
             ]
 
-            if (
-                normalized[0].replace(" ", "").upper()
-                == "SET"
-            ):
-
-                print("SET ROW FOUND")
-                print("TABLE:", table_number)
-                print("ROW:", row_number)
-                print("VALUES:", normalized)
+            if normalized[0].replace(" ", "").upper() == "SET":
 
                 if len(normalized) < 8:
-                    raise ValueError(
-                        "SET row has fewer than 8 columns"
-                    )
+                    continue
 
                 set_index = float(
                     normalized[1].replace(",", "")
@@ -84,17 +95,22 @@ def fetch_set_data():
                     normalized[7].replace(",", "")
                 )
 
-                return {
+                data = {
                     "set_index": set_index,
                     "market_value": market_value,
                     "source": "SET_OFFICIAL",
+                    "source_last_update": last_update,
                     "fetched_at": datetime.now(
                         timezone.utc
                     ).isoformat(),
                     "is_live": False,
                 }
 
-    print("No SET row found.")
+                print("SET ROW FOUND")
+                print("TABLE:", table_number)
+                print("ROW:", row_number)
+
+                return data
 
     raise ValueError(
         "SET market data row not found"
@@ -106,23 +122,6 @@ if __name__ == "__main__":
     data = fetch_set_data()
 
     print("\nSCRAPER SUCCESS")
-    print(data)
 
-
-def extract_last_update(soup):
-
-    text = soup.get_text(" ", strip=True)
-
-    import re
-
-    match = re.search(
-        r"Last Update\s*-\s*Market Status\s*:\s*"
-        r"(.*?)\s*(?:Index\s+Last|Market Summary)",
-        text,
-        re.IGNORECASE
-    )
-
-    if match:
-        return match.group(1).strip()
-
-    return None
+    for key, value in data.items():
+        print(f"{key}: {value}")
