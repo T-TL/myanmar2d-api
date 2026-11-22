@@ -18,5 +18,5 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4
 
-      - name: Probe SET HTML
-        run: python -m app.sources.html_data_probe
+      - name: Test table parser
+        run: python -m app.sources.table_parser_test
