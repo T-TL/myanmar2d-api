@@ -21,6 +21,6 @@ jobs:
         run: |
           pip install requests beautifulsoup4
 
-      - name: Run deep inspection
+      - name: Run targeted inspection
         run: |
-          python -m app.sources.deep_probe
+          python -m app.sources.targeted_probe
