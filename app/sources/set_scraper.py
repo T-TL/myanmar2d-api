@@ -19,19 +19,28 @@ HEADERS = {
 }
 
 
+
 def extract_last_update(soup):
 
     text = soup.get_text(" ", strip=True)
 
-    match = re.search(
-        r"Last Update\s*-\s*Market Status\s*:\s*"
-        r"(.*?)\s*(?:Index\s+Last|Market Summary)",
-        text,
-        re.IGNORECASE
-    )
+    import re
 
-    if match:
-        return match.group(1).strip()
+    patterns = [
+        r"Last Update\s*:?\s*(\d{1,2}\s+\w+\s+\d{4}\s+\d{2}:\d{2}:\d{2})",
+        r"Last Update.*?(\d{1,2}\s+\w+\s+\d{4}\s+\d{2}:\d{2}:\d{2})",
+    ]
+
+    for pattern in patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE
+        )
+
+        if match:
+            return match.group(1)
 
     return None
 
