@@ -1,9 +1,9 @@
 
 import re
-import json
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
+from html import unescape
 
 SOURCES = {
     "SET_OFFICIAL": (
@@ -22,111 +22,109 @@ HEADERS = {
     )
 }
 
-PATTERNS = [
-    "set index",
-    "market value",
-    "total value",
-    "index",
-    "value",
-    "market summary",
-    "last update",
-    "market status",
-    "2d",
-    "updated",
+KEYWORDS = [
+    "setindex",
+    "set_index",
+    "marketvalue",
+    "market_value",
+    "totalvalue",
+    "total_value",
+    "marketdata",
+    "market_data",
+    "stockquote",
+    "quote",
+    "api/",
+    "/api",
 ]
 
 
-def inspect_source(name, url):
-    print("\n" + "=" * 60)
+def inspect_source(name, page_url):
+    print("\n" + "=" * 65)
     print("SOURCE:", name)
 
     try:
         response = requests.get(
-            url,
+            page_url,
             headers=HEADERS,
-            timeout=25
+            timeout=30
         )
+        response.raise_for_status()
 
-        print("HTTP:", response.status_code)
-        print("HTML SIZE:", len(response.text))
+        soup = BeautifulSoup(response.text, "html.parser")
+        scripts = soup.find_all("script", src=True)
 
-        if response.status_code != 200:
-            print("ACCESS FAILED")
-            return
+        print("PAGE STATUS:", response.status_code)
+        print("SCRIPT COUNT:", len(scripts))
 
-        soup = BeautifulSoup(
-            response.text,
-            "html.parser"
-        )
+        candidates = set()
 
-        print("\nPAGE TITLE:")
-        print(
-            soup.title.get_text(strip=True)
-            if soup.title else "No title"
-        )
+        # Inspect JavaScript files linked by the page
+        for script in scripts:
+            js_url = urljoin(page_url, script["src"])
 
-        print("\nSCRIPT FILES:")
-
-        for script in soup.find_all("script", src=True):
-            src = urljoin(url, script["src"])
-
-            if src.startswith(("https://", "http://")):
-                print(src[:300])
-
-        print("\nEMBEDDED DATA:")
-
-        for script in soup.find_all("script"):
-            content = script.string or script.get_text()
-
-            if not content:
+            if not js_url.startswith(("http://", "https://")):
                 continue
 
-            script_type = script.get("type", "")
+            try:
+                js_response = requests.get(
+                    js_url,
+                    headers=HEADERS,
+                    timeout=25
+                )
 
-            if script_type == "application/ld+json":
-                print("JSON-LD FOUND")
-                print(content[:1000])
+                if js_response.status_code != 200:
+                    continue
 
-            for pattern in PATTERNS:
-                if pattern in content.lower():
-                    print(
-                        f"KEYWORD: {pattern} "
-                        f"| LENGTH: {len(content)}"
-                    )
+                js = unescape(js_response.text)
+                print("\nJS FILE:", js_url)
+                print("JS SIZE:", len(js))
 
-                    match = re.search(
-                        re.escape(pattern),
-                        content,
-                        re.IGNORECASE
-                    )
+                # Find relevant API paths and URL strings
+                patterns = [
+                    r"""["']([^"' ]{1,250})["']"""
+                ]
 
-                    if match:
-                        start = max(0, match.start() - 180)
-                        end = min(
-                            len(content),
-                            match.end() + 350
+                for pattern in patterns:
+                    for match in re.findall(pattern, js):
+                        lower = match.lower()
+
+                        if any(k in lower for k in KEYWORDS):
+                            candidates.add(match)
+
+                # Find relevant keywords with nearby code
+                for keyword in KEYWORDS:
+                    for match in re.finditer(
+                        re.escape(keyword), js, re.IGNORECASE
+                    ):
+                        start = max(0, match.start() - 150)
+                        end = min(len(js), match.end() + 250)
+
+                        print(
+                            "\nMATCH:",
+                            keyword,
+                            "\n",
+                            js[start:end][:400]
                         )
-                        print(content[start:end][:550])
-                    break
 
-        print("\nPAGE DATA MARKERS:")
+            except requests.RequestException as error:
+                print("JS DOWNLOAD ERROR:", error)
 
-        markers = [
-            "__NEXT_DATA__",
-            "__NUXT__",
-            "__APOLLO_STATE__",
-            "application/json",
-        ]
+        print("\n--- POSSIBLE DATA URLS / PATHS ---")
 
-        for marker in markers:
+        for item in sorted(candidates):
+            print(item[:300])
+
+        # Check Nuxt state in original HTML
+        print("\n--- NUXT STATE CHECK ---")
+
+        for marker in ["__NUXT__", "__NUXT_DATA__"]:
             print(
                 marker,
-                "FOUND" if marker in response.text
-                else "NOT FOUND"
+                "FOUND" if marker in response.text else "NOT FOUND"
             )
 
     except requests.RequestException as error:
-        print("REQUEST ERROR:", error)
+        print("PAGE ERROR:", error)
 
 
 if __name__ == "__main__":
